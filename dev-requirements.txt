@@ -1,0 +1,2 @@
+# Requirements for all test suites. Extra things can be added via the individual projects
+coverage

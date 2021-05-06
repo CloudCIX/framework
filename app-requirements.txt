@@ -1,0 +1,7 @@
+# Requirements for running the app out of Docker
+django-redis
+git+https://github.com/CloudCIX/python-logstash-async.git
+gunicorn
+jaeger_client
+python3-logstash
+raven

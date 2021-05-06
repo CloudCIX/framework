@@ -1,0 +1,9 @@
+# Ignore unneeded files to bring container size down as much as possible
+.git
+.gitignore
+.gitlab
+.gitlab-ci.yml
+Dangerfile
+.dockerignore
+CHANGELOG.md
+README.md
