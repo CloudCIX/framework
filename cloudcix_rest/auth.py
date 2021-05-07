@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 # libs
 import jwt
 from django.conf import settings
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework import exceptions
 from rest_framework.authentication import TokenAuthentication
@@ -15,7 +16,6 @@ from jaeger_client import Span
 
 # optional imports
 if 'membership' in settings.INSTALLED_APPS and not settings.TESTING:
-    from django.core.cache import cache
     from cloudcix_rest.exceptions import UserExpired
     from membership.models import User as CloudCIXUser
     from membership.serializers import UserSerializer
@@ -69,52 +69,54 @@ class User:
         """
         # Save the token for `is_authenticated` purposes
         self.token = token
+
+        # Check the cache for user_uid
+        cache_key = f'user_{uid}'
+        user = cache.get(cache_key)
+
         # Get the data for the user, using the api unless Membership is installed
         with settings.TRACER.start_span('retrieving_user_object', child_of=span) as api_span:
-            if 'membership' in settings.INSTALLED_APPS and not settings.TESTING:
-                # Get the User from the DB or cache to prevent inf loops
-                # Check the cache first
-                cache_key = f'user_{uid}'
-                user = cache.get(cache_key)
-                if user is None:
+            if user is None:
+                if 'membership' in settings.INSTALLED_APPS and not settings.TESTING:
+                    # Get the User from the DB
                     api_span.set_tag('retrieved_from', 'db')
                     with settings.TRACER.start_span('retrieve_from_db', child_of=api_span):
                         obj = CloudCIXUser.objects.get(pk=uid)
                     with settings.TRACER.start_span('serializing_user', child_of=api_span):
                         user = UserSerializer(instance=obj).data
-                    # Set the user back into the cache (this is okay since it ends up in the same place as membership)
-                    with settings.TRACER.start_span('setting_cache', child_of=api_span):
-                        cache.set(cache_key, user, 5 * 60)
+
+                    # Check expiry date
+                    with settings.TRACER.start_span('checking_expiry_date', child_of=api_span):
+                        if type(user['expiry_date']) == datetime:
+                            user['expiry_date'] = user['expiry_date'].isoformat()
+                        expiry_date = datetime.strptime(
+                            user['expiry_date'].split('T')[0], '%Y-%m-%d',
+                        )
+                        if expiry_date.date() < datetime.utcnow().date() and not user['administrator']:
+                            raise UserExpired()
+
                 else:
-                    api_span.set_tag('retrieved_from', 'cache')
-
-                # Check expiry date
-                with settings.TRACER.start_span('checking_expiry_date', child_of=api_span):
-                    if type(user['expiry_date']) == datetime:
-                        user['expiry_date'] = user['expiry_date'].isoformat()
-                    expiry_date = datetime.strptime(
-                        user['expiry_date'].split('T')[0], '%Y-%m-%d',
-                    )
-                    if expiry_date.date() < datetime.utcnow().date() and not user['administrator']:
-                        raise UserExpired()
-
+                    api_span.set_tag('retrieved_from', 'api')
+                    # Try and read the membership api data
+                    with settings.TRACER.start_span('fetching_user', child_of=api_span) as request_span:
+                        response = Membership.user.read(token=token, pk=uid, span=request_span)
+                        if response.status_code != status.HTTP_200_OK:
+                            # Re-raise any errors from requesting the User
+                            raise ErrorPropagator(response)
+                    try:
+                        user = response.json()['content']
+                    except (KeyError, json.decoder.JSONDecodeError):
+                        logging.getLogger('cloudcix_rest.auth.User').error(
+                            'Error decoding user API response',
+                            exc_info=True,
+                        )
+                        raise
+                with settings.TRACER.start_span('setting_cache', child_of=api_span):
+                    if not settings.TESTING:
+                        # Set the user back into the cache for one minute
+                        cache.set(cache_key, user, 1 * 60)
             else:
-                api_span.set_tag('retrieved_from', 'api')
-                # Try and read the membership api data
-                with settings.TRACER.start_span('fetching_user', child_of=api_span) as request_span:
-                    response = Membership.user.read(token=token, pk=uid, span=request_span)
-                    if response.status_code != status.HTTP_200_OK:
-                        # Re-raise any errors from requesting the User
-                        raise ErrorPropagator(response)
-
-                try:
-                    user = response.json()['content']
-                except (KeyError, json.decoder.JSONDecodeError):
-                    logging.getLogger('cloudcix_rest.auth.User').error(
-                        'Error decoding user API response',
-                        exc_info=True,
-                    )
-                    raise
+                api_span.set_tag('retrieved_from', 'cache')
 
         # Set the attributes of this User instance using information retrieved
         with settings.TRACER.start_span('setting_user_obj_attributes', child_of=span):

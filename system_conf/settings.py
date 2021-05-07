@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/2.0/ref/settings/
 # stdlib
 import os
 import logging
+import random
 from typing import List
 # lib
 from logstash_async.formatter import LogstashFormatter
@@ -26,7 +27,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Path to the public key (change for development)
 PUBLIC_KEY_FILE = os.path.join(BASE_DIR, 'public-key.rsa')
 
-SECRET_KEY = os.getenv('POD_SECRET_KEY', '0!81woi!8^bi51@@fys8%9a3hcz=!46xdf*e+4l*oa!$g#dyl6')
+chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*-_=+'
+''.join(random.choice(chars) for i in range(50))
+
+SECRET_KEY = os.getenv('POD_SECRET_KEY', ''.join(random.choice(chars) for i in range(50)))
 POD_NAME = os.getenv('POD_NAME', 'pod')
 ORGANIZATION_URL = os.getenv('ORGANIZATION_URL', 'example.com')
 
