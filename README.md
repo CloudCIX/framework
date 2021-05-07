@@ -9,9 +9,6 @@ d) Moving the errors folder file for the app to framework/errors
 
 ## Framework Environment Variables
 
-### `public-key.rsa`
-- Public key is used by all CloudCIX APIs to decode json tokens created by the Membership API
-
 ### `POD_SECRET_KEY`
 - This is the Django secret key value that is used to secure signed data. 
 - More information can be found [here](https://docs.djangoproject.com/en/2.2/topics/signing/#protecting-the-secret-key)
@@ -61,3 +58,8 @@ d) Moving the errors folder file for the app to framework/errors
 
 ### `ELASTICSEARCH_DSL` (optional)
 - Default is an empty string ('').
+
+## Framework Volumes
+
+### `/application_framework/public-key.rsa`
+- Public key is used by all CloudCIX APIs to decode JSON Web tokens (JWT) created by the Membership API.
