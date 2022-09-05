@@ -1,9 +1,12 @@
 # stdlib
+from contextlib import contextmanager
 from hashlib import blake2b
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Type
 # lib
 from django.core.cache import cache
+from django.db import models, router, transaction
 from django.utils.datastructures import MultiValueDict
+from psycopg2 import sql
 # local
 import errors  # When building Dockerfile, move the Application errors module to `/application_framework`
 
@@ -75,3 +78,27 @@ def convert_to_openapi(params: MultiValueDict) -> Dict[str, Any]:
             results[param_name] = param_value
 
     return results
+
+
+@contextmanager
+def db_lock(model_class: Type[models.Model], using: str = None):
+    """
+    Lock a database table from modification for the duration of the context manager
+    :param model_class: The django model whose table should be locked
+    :param using: The name of the database to connect to
+    """
+    if using is None:
+        using = router.db_for_write(model=model_class)
+
+    # Locks can only be acquired within transactions
+    with transaction.atomic(using=using):
+        cursor = transaction.get_connection(using=using).cursor()
+        cursor.execute(
+            sql.SQL('LOCK TABLE {} IN EXCLUSIVE MODE').format(sql.Identifier(model_class._meta.db_table)),
+        )
+        try:
+            # Context manager needs one yield statement
+            yield
+        finally:
+            if cursor and not cursor.closed:
+                cursor.close()

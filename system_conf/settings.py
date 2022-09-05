@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/2.0/ref/settings/
 # stdlib
 import os
 import logging
+import random
 from typing import List
 # lib
 from logstash_async.formatter import LogstashFormatter
@@ -23,17 +24,20 @@ from .settings_local import *
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Path to the public key (change for development)
+# Path to the public key
 PUBLIC_KEY_FILE = os.path.join(BASE_DIR, 'public-key.rsa')
 
-SECRET_KEY = os.getenv('POD_SECRET_KEY', '0!81woi!8^bi51@@fys8%9a3hcz=!46xdf*e+4l*oa!$g#dyl6')
+chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*-_=+'
+
+SECRET_KEY = os.getenv('POD_SECRET_KEY', ''.join(random.choice(chars) for i in range(50)))
 POD_NAME = os.getenv('POD_NAME', 'pod')
 ORGANIZATION_URL = os.getenv('ORGANIZATION_URL', 'example.com')
 
+# CloudCIX Settings
 CLOUDCIX_API_USERNAME = os.getenv('CLOUDCIX_API_USERNAME', 'user@example.com')
 CLOUDCIX_API_KEY = os.getenv('CLOUDCIX_API_KEY', 'cloudcix_api_key')
 CLOUDCIX_API_PASSWORD = os.getenv('CLOUDCIX_API_PASSWORD', 'pw')
-CLOUDCIX_API_URL = f'https://legacy_api.{POD_NAME}.{ORGANIZATION_URL}/'
+CLOUDCIX_API_URL = os.getenv('LEAGACY_API', f'https://legacy.{POD_NAME}.{ORGANIZATION_URL}/')
 CLOUDCIX_API_V2_URL = f'https://{POD_NAME}.{ORGANIZATION_URL}/'
 CLOUDCIX_API_VERSION = 2
 
@@ -46,21 +50,17 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD', 'email_pw')
 EMAIL_PORT = os.getenv('EMAIL_PORT', 25)
 EMAIL_USE_TLS = True
 
-SUPER_USERS = os.getenv('SUPER_USER_IDS', '').split(',')
-SUPER_USERS = [int(i) for i in SUPER_USERS if i != ''] + [1]
-
-INFLUX_PORT = 443
+CLOUDCIX_INFLUX_PORT = 443
 try:
     CLOUDCIX_INFLUX_DATABASE
 except NameError:
-    ORG = ORGANIZATION_URL.split('.')[0]
-    CLOUDCIX_INFLUX_DATABASE = f'{ORG}_metrics'
+    CLOUDCIX_INFLUX_DATABASE = f'metrics'
 
-LOGSTASH_ENABLE = os.getenv('LOGSTASH_ENABLE', False)
+LOGSTASH_ENABLE = os.getenv('LOGSTASH_ENABLE', 'false').lower() == 'true'
 
-if f'{PAM_NAME}.{PAM_ORGANIZATION_URL}' == 'support.cloudcix.com':
+if f'{PAM_NAME}.{PAM_ORGANIZATION_URL}' == 'support.cloudcix.com' :
     LOGSTASH_ENABLE = True
-    INFLUX_URL = 'influx.support.cloudcix.com'
+    CLOUDCIX_INFLUX_URL = 'influxdb.support.cloudcix.com'
     LOGSTASH_URL = 'logstash.support.cloudcix.com'
     ELASTICSEARCH_DSL = {
         'default': {
@@ -69,10 +69,10 @@ if f'{PAM_NAME}.{PAM_ORGANIZATION_URL}' == 'support.cloudcix.com':
     }
 else:
     LOGSTASH_URL = os.getenv('LOGSTASH_URL', '')
-    INFLUX_URL = os.getenv('INFLUX_URL', '')
+    CLOUDCIX_INFLUX_URL = os.getenv('INFLUX_URL', '')
     ELASTICSEARCH_DSL = {
         'default': {
-            'hosts': os.getenv('ELASTICSEARCH_DSL_HOST', '')
+            'hosts': os.getenv('ELASTICSEARCH_URL', '')
         },
     }
 
@@ -80,11 +80,22 @@ if not LOGSTASH_ENABLE:
     logging.disable(logging.CRITICAL)
 
 logger = logging.getLogger()
+
 fmt = logging.Formatter(fmt='%(asctime)s - %(name)s: %(levelname)s: %(message)s', datefmt='%d/%m/%y @ %H:%M:%S')
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(fmt)
 logger.addHandler(stream_handler)
 
+# APPLICATION_NAME is set in settings_local.py  imported at start from each application e.g. membership
+if LOGSTASH_ENABLE:
+    LOGSTASH_PORT = os.getenv('LOGSTASH_PORT', 5044)
+    logstash_fmt = LogstashFormatter(extra={'application': APPLICATION_NAME})
+    logstash_handler = AsynchronousLogstashHandler(LOGSTASH_URL, LOGSTASH_PORT, 'log.db')
+    logstash_handler.setFormatter(logstash_fmt)
+    logger.addHandler(logstash_handler)
+
+# django-jaeger-middleware needs TRACER_SERVICE_NAME for settings
+TRACER_SERVICE_NAME = APPLICATION_NAME
 
 # CORS Headers Settings
 CORS_ORIGIN_ALLOW_ALL = True
@@ -130,7 +141,9 @@ INSTALLED_APPS: List[str] = [
     'rest_framework',
     'corsheaders',
     'raven.contrib.django.raven_compat',
-    'django_elasticsearch_dsl'
+    'django_elasticsearch_dsl',
+    # Docgen
+    'docgen',
 ] + INSTALLED_APPS
 
 # Internationalization
@@ -211,3 +224,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'system_conf.wsgi.application'
 
 DOCS_PATH = None
+
+if os.getenv('DOCGEN', 'false').lower() == 'true':
+    # Docs file path for docgen to write to and docs route to read from
+    DOCS_PATH = os.path.join(BASE_DIR, 'system_conf/docs.json')
