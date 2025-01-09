@@ -2,10 +2,10 @@
 
 This is the base Djago Rest Framework for Python3 CloudCIX APIs. It contains functions and settings that are common and available to all CloudCIX APIs. It is extended by 
 
-a) Copying the application repository into the framework e.g. framework/membership
-b) Moving the settings_local.py file for the application to framework/system_conf/settings_local.py
-c) Moving the urls_local.py file for the application to framework/system_conf/urls_local.py
-d) Moving the errors folder file for the application to framework/errors
+a) Copying the application repository into the framework e.g. framework/membership  
+b) Moving the settings_local.py file for the application to framework/system_conf/settings_local.py  
+c) Moving the urls_local.py file for the application to framework/system_conf/urls_local.py  
+d) Moving the errors folder file for the application to framework/errors   
 
 ## Framework Environment Variables
 
