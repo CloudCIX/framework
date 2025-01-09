@@ -1,7 +1,7 @@
 # stdlib
 from contextlib import contextmanager
 from hashlib import blake2b
-from typing import Any, Callable, Dict, List, Type
+from typing import Any, Callable, Dict, List, Optional, Type
 # lib
 from django.core.cache import cache
 from django.db import models, router, transaction
@@ -33,7 +33,7 @@ def memoize(seconds: int = 0) -> Callable:
 
 
 @memoize(seconds=3600)
-def get_error_details(*error_codes: str, language_id: int = None) -> Dict[str, Dict[str, str]]:
+def get_error_details(*error_codes: str, language_id: Optional[int] = None) -> Dict[str, Dict[str, str]]:
     """
     Gathers all the error_codes and details from the `errors` module for the given error codes
     :param error_codes: The error codes to gather the error messages for
@@ -81,7 +81,7 @@ def convert_to_openapi(params: MultiValueDict) -> Dict[str, Any]:
 
 
 @contextmanager
-def db_lock(model_class: Type[models.Model], using: str = None):
+def db_lock(model_class: Type[models.Model], using: Optional[str] = None):
     """
     Lock a database table from modification for the duration of the context manager
     :param model_class: The django model whose table should be locked

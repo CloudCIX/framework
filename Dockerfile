@@ -1,7 +1,9 @@
-FROM python:3.7
+FROM python:3.10
 WORKDIR /application_framework
 COPY . .
-# Update pip
-RUN pip3 install -U pip
+
+# Ensure your package index is up-to-date
+RUN apt update && apt upgrade -y
+
 # Install libs necessary for all applications
-RUN pip3 install -r requirements.txt
+RUN pip3 install -U pip && pip3 install -r requirements.txt

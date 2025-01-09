@@ -1,5 +1,4 @@
 # lib
-from django.contrib.postgres.fields import JSONField
 from django.db import models
 
 
@@ -59,7 +58,7 @@ class BaseModel(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     deleted = models.DateTimeField(null=True)
-    extra = JSONField(default=dict)
+    extra = models.JSONField(default=dict)
     # Overwrite the default manager with our base one
     objects = BaseManager()
 

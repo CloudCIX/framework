@@ -1,5 +1,5 @@
 # stdlib
-from typing import Dict
+from typing import Dict, Optional
 
 # libs
 from rest_framework.exceptions import APIException
@@ -58,7 +58,7 @@ class Http400(APIExceptionBase):
     status_code = status.HTTP_400_BAD_REQUEST
     default_detail = 'Bad request.'
 
-    def __init__(self, errors: Dict[str, Dict[str, str]] = None, **kwargs) -> None:
+    def __init__(self, errors: Optional[Dict[str, Dict[str, str]]] = None, **kwargs) -> None:
         """
         Create a HTTP 400 error
         :param errors: Errors from the controller that caused this error

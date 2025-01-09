@@ -15,6 +15,7 @@ import logging
 import random
 from typing import List
 # lib
+import sentry_sdk
 from logstash_async.formatter import LogstashFormatter
 from logstash_async.handler import AsynchronousLogstashHandler
 # local
@@ -32,17 +33,21 @@ chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*-_=+'
 SECRET_KEY = os.getenv('POD_SECRET_KEY', ''.join(random.choice(chars) for i in range(50)))
 POD_NAME = os.getenv('POD_NAME', 'pod')
 ORGANIZATION_URL = os.getenv('ORGANIZATION_URL', 'example.com')
+PORTAL_NAME = os.getenv('PORTAL_NAME', 'saas')
+PORTAL_URL = f'https://{PORTAL_NAME}.{ORGANIZATION_URL}'
 
 # CloudCIX Settings
 CLOUDCIX_API_USERNAME = os.getenv('CLOUDCIX_API_USERNAME', 'user@example.com')
 CLOUDCIX_API_KEY = os.getenv('CLOUDCIX_API_KEY', 'cloudcix_api_key')
 CLOUDCIX_API_PASSWORD = os.getenv('CLOUDCIX_API_PASSWORD', 'pw')
-CLOUDCIX_API_URL = os.getenv('LEAGACY_API', f'https://legacy.{POD_NAME}.{ORGANIZATION_URL}/')
+CLOUDCIX_API_URL = os.getenv('CLOUDCIX_API_URL', '')
+if CLOUDCIX_API_URL == '':
+    CLOUDCIX_API_URL = os.getenv('LEAGACY_API', f'https://legacyapi.{POD_NAME}.{ORGANIZATION_URL}/')
 CLOUDCIX_API_V2_URL = f'https://{POD_NAME}.{ORGANIZATION_URL}/'
 CLOUDCIX_API_VERSION = 2
 
-PAM_NAME = os.getenv('PAM_NAME', 'pam')
-PAM_ORGANIZATION_URL = os.getenv('PAM_ORGANIZATION_URL', 'example.com')
+PAT_NAME = os.getenv('PAT_NAME', 'pam')
+PAT_ORGANIZATION_URL = os.getenv('PAT_ORGANIZATION_URL', 'example.com')
 
 EMAIL_HOST = os.getenv('EMAIL_HOST', f'mail.example.com')
 EMAIL_HOST_USER = os.getenv('EMAIL_USER', f'notifications@example.com')
@@ -50,34 +55,54 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD', 'email_pw')
 EMAIL_PORT = os.getenv('EMAIL_PORT', 25)
 EMAIL_USE_TLS = True
 
-CLOUDCIX_INFLUX_PORT = 443
-try:
-    CLOUDCIX_INFLUX_DATABASE
-except NameError:
-    CLOUDCIX_INFLUX_DATABASE = f'metrics'
+# Small flag for whether or not this is a production deployment
+PRODUCTION_DEPLOYMENT = os.getenv('PRODUCTION_DEPLOYMENT', 'true').lower() == 'true'
+DEVELOPER_EMAILS = os.getenv('DEVELOPER_EMAILS', 'developers@cloudcix.com')
+# Flag for if django debug setting is to be enabled, defaults to False
+DEBUG =  os.getenv('DEBUG', 'false').lower() == 'true'
+
+# Flag for if this is for running tests, defaults to False
+TESTING = os.getenv('TESTING', 'false').lower() == 'true'
+TEST_PASSWORD = os.getenv('TEST_PASSWORD', '')
+
+# Sentry Logging Config
+SENTRY_URL = os.getenv('SENTRY_URL', '')
+SENTRY_TRACES_SETTING = os.getenv('SENTRY_TRACES_SETTING', 0.1)
+
+if SENTRY_URL != '':
+    sentry_sdk.init(
+        dsn=SENTRY_URL,
+        traces_sample_rate=float(SENTRY_TRACES_SETTING),
+    )
 
 LOGSTASH_ENABLE = os.getenv('LOGSTASH_ENABLE', 'false').lower() == 'true'
+LOGSTASH_URL = os.getenv('LOGSTASH_URL', '')
+CLOUDCIX_INFLUX_URL = os.getenv('INFLUX_URL', '')
 
-if f'{PAM_NAME}.{PAM_ORGANIZATION_URL}' == 'support.cloudcix.com' :
-    LOGSTASH_ENABLE = True
-    CLOUDCIX_INFLUX_URL = 'influxdb.support.cloudcix.com'
-    LOGSTASH_URL = 'logstash.support.cloudcix.com'
-    ELASTICSEARCH_DSL = {
-        'default': {
-            'hosts': 'elasticsearch.support.cloudcix.com'
-        },
-    }
+CLOUDCIX_INFLUX_PORT = 443
+if CLOUDCIX_INFLUX_URL == '':
+    CLOUDCIX_INFLUX_DATABASE = None
 else:
-    LOGSTASH_URL = os.getenv('LOGSTASH_URL', '')
-    CLOUDCIX_INFLUX_URL = os.getenv('INFLUX_URL', '')
-    ELASTICSEARCH_DSL = {
-        'default': {
-            'hosts': os.getenv('ELASTICSEARCH_URL', '')
-        },
-    }
+    try:
+        CLOUDCIX_INFLUX_DATABASE
+    except NameError:
+        CLOUDCIX_INFLUX_DATABASE = f'metrics'
+
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': os.getenv('ELASTICSEARCH_URL', '')
+    },
+}
 
 if not LOGSTASH_ENABLE:
     logging.disable(logging.CRITICAL)
+    TRACER_CONFIG = {
+        'logging': False,
+        'sampler': {
+            'type': 'const',
+            'param': 0,
+        },
+    }
 
 logger = logging.getLogger()
 
@@ -93,6 +118,20 @@ if LOGSTASH_ENABLE:
     logstash_handler = AsynchronousLogstashHandler(LOGSTASH_URL, LOGSTASH_PORT, 'log.db')
     logstash_handler.setFormatter(logstash_fmt)
     logger.addHandler(logstash_handler)
+    if DEBUG:
+        logger.setLevel('DEBUG')
+
+    # Tracing settings
+    TRACER_CONFIG = {
+        'logging': True,
+        'sampler': {
+            'type': 'probabilistic',
+            'param':  0.1,
+        },
+        'local_agent': {
+            'reporting_host': 'jaeger-agent',
+        },
+    }
 
 # django-jaeger-middleware needs TRACER_SERVICE_NAME for settings
 TRACER_SERVICE_NAME = APPLICATION_NAME
@@ -130,6 +169,10 @@ DATABASE_ROUTERS: List[str] = [
     'cloudcix_rest.db_router.CloudCIXRouter',
 ] + DATABASE_ROUTERS
 
+# Default primary key field type
+# https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 # Installed apps
 INSTALLED_APPS: List[str] = [
     'django.contrib.auth',
@@ -140,11 +183,13 @@ INSTALLED_APPS: List[str] = [
     # Libs
     'rest_framework',
     'corsheaders',
-    'raven.contrib.django.raven_compat',
-    'django_elasticsearch_dsl',
     # Docgen
     'docgen',
 ] + INSTALLED_APPS
+
+if not TESTING:
+    INSTALLED_APPS.append('raven.contrib.django.raven_compat')
+    INSTALLED_APPS.append('django_elasticsearch_dsl')
 
 # Internationalization
 # https://docs.djangoproject.com/en/2.0/topics/i18n/
@@ -223,8 +268,4 @@ TEMPLATES = [
 # Application definition
 WSGI_APPLICATION = 'system_conf.wsgi.application'
 
-DOCS_PATH = None
-
-if os.getenv('DOCGEN', 'false').lower() == 'true':
-    # Docs file path for docgen to write to and docs route to read from
-    DOCS_PATH = os.path.join(BASE_DIR, 'system_conf/docs.json')
+DOCS_PATH = os.path.join(BASE_DIR, 'system_conf/docs.json')

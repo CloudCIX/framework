@@ -14,9 +14,28 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+# lib
+from cloudcix_rest.views import DocumentationView
+from django.urls import path
 # Import the local urls created by the individual applications
 from system_conf.urls_local import urlpatterns
 
-__all__ = [
-    'urlpatterns',
-]
+
+def trigger_error(request):
+    # dividing 1 by 0 will raise ZeroDivisionError
+    1 / 0
+
+
+# Add on the url for documentation
+urlpatterns.append(
+    path(
+        'documentation/',
+        DocumentationView.as_view(),
+        name='api_documentation',
+    ),
+)
+
+# Add on the url for Sentry Test Configuration
+urlpatterns.append(
+    path('sentry-debug/', trigger_error),
+)

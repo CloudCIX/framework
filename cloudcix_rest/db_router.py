@@ -53,7 +53,13 @@ class CloudCIXRouter:
         """
         return True if model1._meta.app_label == 'cloudcix_rest' and model2._meta.app_label == 'cloudcix_rest' else None
 
-    def allow_migrate(self, db: str, app_label: str, model_name: str = None, **hints: Dict[str, Any]) -> Optional[bool]:
+    def allow_migrate(
+            self,
+            db: str,
+            app_label: str,
+            model_name: Optional[str] = None,
+            **hints: Dict[str, Any],
+    ) -> Optional[bool]:
         """
         Determine whether a migration is allowed to be run on a given DB
         :param db: The name of the database being checked
